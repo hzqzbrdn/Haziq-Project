@@ -97,7 +97,7 @@ else
 fi
 
 # --- Bring Tailscale up with Headscale + subnet route ---
-if [ "$AUTHKEY" = "PASTE_YOUR_PAUTH_KEY_HERE" ]; then
+if [ "$AUTHKEY" = "a1cafb62710fb075a66ed85f01e79796a28910432f5f160d" ]; then
     echo "[!] You did NOT set AUTHKEY in this script."
     echo "    Edit the script and put your Headscale preauth key in AUTHKEY."
     exit 1
