@@ -160,10 +160,12 @@ sleep 3
 echo "[9] Running 'tailscale up' to Headscale..."
 
 tailscale up \
-    --login-server="${HEADSCALE_URL}" \
-    --authkey="${AUTHKEY}" \
-    --hostname="${HOSTNAME_TS}" \
-    --accept-dns=false 
+  --login-server=https://hs.client.loranet.my \
+  --authkey=YOUR_AUTH_KEY \
+  --hostname=YOUR_HOSTNAME \
+  --accept-routes=false \
+  --advertise-routes= \
+  --accept-dns=false
 
 # ---------------------------------------------------------
 # 10) Create lightweight watchdog script + cron
