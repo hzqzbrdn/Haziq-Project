@@ -14,9 +14,9 @@ HOST_PREFIX="RAK7289"
 # User must pass AUTHKEY:
 # Example:
 # AUTHKEY=tskey-auth-xxxxxx sh script.sh
-AUTHKEY="${AUTHKEY:-TESTKEY_PLACEHOLDER}"
+AUTHKEY="${AUTHKEY:key-auth-a1cafb62710fb075a66ed85f01e79796a28910432f5f160d}"
 
-if [ "$AUTHKEY" = "TESTKEY_PLACEHOLDER" ]; then
+if [ "$AUTHKEY" = "key-auth-a1cafb62710fb075a66ed85f01e79796a28910432f5f160d" ]; then
     echo "⚠ WARNING: No AUTHKEY supplied."
     echo "Run script like:"
     echo "AUTHKEY=tskey-auth-xxxxx sh gateway.sh"
