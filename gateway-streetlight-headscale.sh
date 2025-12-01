@@ -171,7 +171,7 @@ else
         --hostname="${HOSTNAME_TS}" \
         --accept-routes=true \
         --advertise-routes="${ADVERTISE_ROUTES}" \
-        --accept-dns=false || true
+        --accept-dns=false 
 fi
 
 echo ""
