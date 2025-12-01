@@ -1,7 +1,7 @@
 #!/bin/sh
 # ---------------------------------------------------------
 # RAK7289 WisGateOS 2 - Headscale / Tailscale auto setup
-# TEST VERSION (contains placeholder AUTHKEY)
+# BusyBox ash compatible version
 # ---------------------------------------------------------
 
 set -e
@@ -9,86 +9,105 @@ set -e
 ### CONFIG ###
 HEADSCALE_URL="https://hs.client.loranet.my"
 SUBNET="192.168.230.0/24"
-HOST_PREFIX="rak7289"
-#####################################
+HOST_PREFIX="RAK7289CV2"
 
-# -------------------------------
-# TEMP AUTHKEY FOR TESTING ONLY
-# -------------------------------
+# AUTHKEY (placeholder for testing)
 AUTHKEY="${AUTHKEY:-a1cafb62710fb075a66ed85f01e79796a28910432f5f160d}"
 
-if [ "$AUTHKEY" = "a1cafb62710fb075a66ed85f01e79796a28910432f5f160d" ]; then
-    echo "⚠ WARNING: Using TEST AUTHKEY placeholder."
-    echo "⚠ This will NOT register to Headscale."
-    echo "✔ Script logic will still run for testing."
+if [ "$AUTHKEY" = "TESTKEY_PLACEHOLDER" ]; then
+    echo "⚠ Using TEST AUTHKEY placeholder."
+    echo "⚠ Script will run, but WILL NOT register."
 fi
 
-echo "=== RAK7289 WisGateOS 2 Headscale Setup (Test Mode) ==="
+echo "=== RAK7289 WisGateOS 2 Headscale Setup (BusyBox Compatible) ==="
 
-# -------------------------------
-# Detect OpenWrt/WisGateOS
-# -------------------------------
+# ---------------------------------------------------------
+# 1. Detect OpenWrt / WisGateOS
+# ---------------------------------------------------------
 if ! command -v opkg >/dev/null 2>&1; then
     echo "ERROR: This system is not OpenWrt/WisGateOS."
     exit 1
 fi
-echo "[*] WisGateOS2 detected."
 
-# -------------------------------
-# Install Tailscale if needed
-# -------------------------------
+echo "[1] WisGateOS/OpenWrt detected ✔"
+
+# ---------------------------------------------------------
+# 2. Install Tailscale if missing
+# ---------------------------------------------------------
 if ! command -v tailscale >/dev/null 2>&1; then
-    echo "[*] Installing Tailscale..."
+    echo "[2] Installing Tailscale..."
     opkg update
     opkg install tailscale tailscaled || true
 else
-    echo "[*] Tailscale already installed."
+    echo "[2] Tailscale already installed ✔"
 fi
 
-# -------------------------------
-# Enable IPv4 forwarding
-# -------------------------------
-echo "[*] Enabling IPv4 forwarding..."
+# ---------------------------------------------------------
+# 3. Enable IPv4 forwarding
+# ---------------------------------------------------------
+echo "[3] Enabling IPv4 forwarding..."
 sysctl -w net.ipv4.ip_forward=1 >/dev/null
 
-# -------------------------------
-# Detect MAC → EUI64
-# -------------------------------
-echo "[*] Detecting MAC interface..."
+# ---------------------------------------------------------
+# 4. Detect MAC → EUI64 for hostname
+# ---------------------------------------------------------
+echo "[4] Detecting MAC interface..."
 
-for IF in eth0 eth1 br-lan; do
-    if [ -e "/sys/class/net/$IF/address" ]; then
-        MAC_IFACE="$IF"
+MAC_IFACE=""
+
+for IFACE in eth0 eth1 br-lan; do
+    if [ -e "/sys/class/net/$IFACE/address" ]; then
+        MAC_IFACE="$IFACE"
         break
     fi
 done
 
+if [ -z "$MAC_IFACE" ]; then
+    echo "ERROR: No valid network interface found!"
+    exit 1
+fi
+
 MAC=$(cat /sys/class/net/$MAC_IFACE/address)
+
+# Remove colons
 MAC_NO_COLON=$(echo "$MAC" | tr -d ':')
-OUI=${MAC_NO_COLON%??????}
-NIC=${MAC_NO_COLON#??????}
+
+# Split into OUI + NIC
+OUI=$(echo "$MAC_NO_COLON" | cut -c1-6)
+NIC=$(echo "$MAC_NO_COLON" | cut -c7-12)
+
+# Construct EUI-64
 EUI=$(echo "${OUI}FFFE${NIC}" | tr 'a-f' 'A-F')
 
-TS_HOSTNAME="${HOST_PREFIX}-${EUI}"
+TS_HOSTNAME="${HOST_PREFIX}_${EUI}"
 
-echo "[*] Generated hostname: $TS_HOSTNAME"
+echo "[4] Hostname generated: $TS_HOSTNAME"
 
+# Apply hostname
 uci set system.@system[0].hostname="$TS_HOSTNAME"
 uci commit system
 /etc/init.d/system restart || true
-
-# -------------------------------
-# Start Tailscale daemon
-# -------------------------------
-echo "[*] Starting Tailscale service..."
-/etc/init.d/tailscaled enable
-/etc/init.d/tailscaled restart
 sleep 2
 
-# -------------------------------
-# tailscale up command (test run)
-# -------------------------------
-echo "[*] Running tailscale up (test)..."
+# ---------------------------------------------------------
+# 5. Start Tailscale daemon
+# ---------------------------------------------------------
+echo "[5] Starting tailscaled..."
+
+if [ -f "/etc/init.d/tailscaled" ]; then
+    /etc/init.d/tailscaled enable
+    /etc/init.d/tailscaled restart
+else
+    echo "ERROR: tailscaled service missing"
+    exit 1
+fi
+
+sleep 3
+
+# ---------------------------------------------------------
+# 6. Tailscale up
+# ---------------------------------------------------------
+echo "[6] Running tailscale up..."
 
 tailscale up \
   --login-server="$HEADSCALE_URL" \
@@ -96,9 +115,9 @@ tailscale up \
   --hostname="$TS_HOSTNAME" \
   --accept-routes=true \
   --advertise-routes="$SUBNET" \
-  --accept-dns=false || true
+  --accept-dns=false || echo "⚠ tailscale up returned non-zero (expected in test mode)"
 
 echo ""
-echo "=== TEST COMPLETE ==="
+echo "=== DONE ==="
 echo "Script executed successfully."
-echo "Replace AUTHKEY with real key for full registration."
+echo "Replace AUTHKEY with real key to register."
