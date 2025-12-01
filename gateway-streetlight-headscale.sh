@@ -161,8 +161,8 @@ echo "[9] Running 'tailscale up' to Headscale..."
 
 tailscale up \
   --login-server=https://hs.client.loranet.my \
-  --authkey=YOUR_AUTH_KEY \
-  --hostname=YOUR_HOSTNAME \
+  --authkey=$AUTHKEY \
+  --hostname=${HOSTNAME_TS} \
   --accept-routes=false \
   --advertise-routes= \
   --accept-dns=false
