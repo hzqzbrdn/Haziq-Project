@@ -10,7 +10,7 @@ AUTHKEY="b71f3ae0129e9f99870392c28967035c9059da4955dc4d82"
 HEADSCALE_URL="https://hs.client.loranet.my"
 ADVERTISE_ROUTES="192.168.230.0/24"
 SD_PATH="/mnt/mmcblk0p1/tailscale"
-TS_VERSION="1.78.1"
+TS_VERSION="1.56.1"
 ARCH="mipsle"
 TS_TGZ="tailscale_${TS_VERSION}_${ARCH}.tgz"
 
