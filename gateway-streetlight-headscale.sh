@@ -176,12 +176,12 @@ sleep 2
 # -------------------------------
 # Run tailscale up (if AUTHKEY provided)
 # -------------------------------
-if echo "$AUTHKEY" | grep -q "TSKEY_AUTH_PLACEHOLDER"; then
+if echo "$AUTHKEY" | grep -q "b71f3ae0129e9f99870392c28967035c9059da4955dc4d82"; then
     echo "⚠ AUTHKEY not provided."
     echo "   Skipping 'tailscale up'."
     echo ""
     echo "To register this gateway, run:"
-    echo "  AUTHKEY=tskey-auth-xxxxxxxxxxxxxxxxxxxxxxxxxxxx \\"
+    echo "  AUTHKEY=$AUTHKEY \\"
     echo "    sh gateway-streetlight-headscale.sh"
 else
     echo "[11] Running tailscale up against Headscale..."
@@ -191,7 +191,7 @@ else
         --hostname="$TS_HOSTNAME" \
         --accept-routes=true \
         --advertise-routes="$SUBNET" \
-        --accept-dns=false || true
+        --accept-dns=false
 fi
 
 echo ""
