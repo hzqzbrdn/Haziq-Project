@@ -1,11 +1,12 @@
 #!/bin/sh
 # ---------------------------------------------------------
 # WisGateOS2 (RAK7289) - Tailscale 1.56.1 SD-card installer
-# - Uses static mipsle build (tiny footprint)
-# - Stores binaries on SD card
+# - Static mipsle build (tiny footprint)
+# - Stores binaries on SD-card
 # - Creates /etc/init.d/tailscaled (procd)
 # - Enables auto-start on boot
-# - Runs `tailscale up` to Headscale
+# - Watchdog via cron (auto-restart)
+# - Joins Headscale automatically
 # ---------------------------------------------------------
 
 set -e
@@ -50,9 +51,7 @@ echo "[1] WisGateOS2 detected, SD card OK: ${TS_DIR}"
 echo "[2] Downloading Tailscale static binary:"
 echo "    ${TS_URL}"
 
-# Always refresh (comment the next line if you want to keep old tarball)
 rm -f "${TS_TGZ}"
-
 wget -O "${TS_TGZ}" "${TS_URL}"
 
 # ---------------------------------------------------------
@@ -92,6 +91,7 @@ mkdir -p /var/log
 
 # ---------------------------------------------------------
 # 6) Create /etc/init.d/tailscaled (procd service)
+#    + RAM-friendly env (no log upload)
 # ---------------------------------------------------------
 echo "[6] Creating /etc/init.d/tailscaled service..."
 
@@ -107,6 +107,7 @@ start_service() {
     [ -e /var/log/tailscaled.log ] || touch /var/log/tailscaled.log
 
     procd_open_instance
+    procd_set_param env TS_NO_LOGS=1 TS_LOG_TARGET=stderr
     procd_set_param command /usr/bin/tailscaled \
         --state=/var/lib/tailscale/tailscaled.state \
         --socket=/var/run/tailscale/tailscaled.sock
@@ -123,7 +124,7 @@ chmod +x /etc/init.d/tailscaled
 /etc/init.d/tailscaled enable
 
 # ---------------------------------------------------------
-# 7) Generate hostname from MAC (DNS-safe)
+# 7) Generate hostname from MAC (DNS-safe, lowercase)
 # ---------------------------------------------------------
 echo "[7] Generating hostname from MAC..."
 
@@ -136,14 +137,12 @@ if [ ! -e "/sys/class/net/${IFACE}/address" ]; then
     HOSTNAME_TS="rak7289-unknown"
 else
     MAC=$(cat "/sys/class/net/${IFACE}/address" | tr -d ':')
-    # last 4 hex chars as suffix
     SUFFIX=$(echo "${MAC}" | tail -c 5 | tr 'A-Z' 'a-z')
     HOSTNAME_TS="rak7289-${SUFFIX}"
 fi
 
 echo "    Hostname will be: ${HOSTNAME_TS}"
 
-# Best-effort set system hostname too
 uci set system.@system[0].hostname="${HOSTNAME_TS}" 2>/dev/null || true
 uci commit system 2>/dev/null || true
 
@@ -156,26 +155,44 @@ echo "[8] Starting tailscaled service..."
 sleep 3
 
 # ---------------------------------------------------------
-# 9) Run 'tailscale up' (if AUTHKEY set)
+# 9) Run 'tailscale up' to Headscale
 # ---------------------------------------------------------
-if [ "${AUTHKEY}" = "null" ]; then
-    echo "⚠ AUTHKEY is still placeholder."
-    echo "   Edit this script and set AUTHKEY to your real Headscale key,"
-    echo "   then re-run the script or run 'tailscale up' manually."
-else
-    echo "[9] Running 'tailscale up' to Headscale..."
+echo "[9] Running 'tailscale up' to Headscale..."
 
-    tailscale up \
-        --login-server="${HEADSCALE_URL}" \
-        --authkey="${AUTHKEY}" \
-        --hostname="${HOSTNAME_TS}" \
-        --accept-routes=true \
-        --advertise-routes="${ADVERTISE_ROUTES}" \
-        --accept-dns=false 
+tailscale up \
+    --login-server="${HEADSCALE_URL}" \
+    --authkey="${AUTHKEY}" \
+    --hostname="${HOSTNAME_TS}" \
+    --accept-routes=true \
+    --advertise-routes="${ADVERTISE_ROUTES}" \
+    --accept-dns=false 
+
+# ---------------------------------------------------------
+# 10) Create lightweight watchdog script + cron
+# ---------------------------------------------------------
+echo "[10] Installing watchdog..."
+
+cat << 'EOF' > /usr/bin/tailscale-watchdog.sh
+#!/bin/sh
+if ! pgrep tailscaled >/dev/null 2>&1; then
+    /etc/init.d/tailscaled restart
+fi
+EOF
+
+chmod +x /usr/bin/tailscale-watchdog.sh
+
+# add to cron if not already there
+if ! grep -q "tailscale-watchdog.sh" /etc/crontabs/root 2>/dev/null; then
+    echo "*/1 * * * * /usr/bin/tailscale-watchdog.sh" >> /etc/crontabs/root
 fi
 
+/etc/init.d/cron restart 2>/dev/null || true
+
+# ---------------------------------------------------------
+# 11) Done
+# ---------------------------------------------------------
 echo ""
 echo "=== DONE ==="
-echo "tailscaled installed to SD-card, service enabled and started."
+echo "tailscaled installed to SD-card, service enabled and watchdog active."
 echo "Hostname: ${HOSTNAME_TS}"
 echo "Check status with:  tailscale status"
