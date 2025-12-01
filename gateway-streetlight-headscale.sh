@@ -6,7 +6,7 @@
 # - Creates /etc/init.d/tailscaled (procd)
 # - Enables auto-start on boot
 # - Watchdog via cron (auto-restart)
-# - Joins Headscale automatically
+# - Joins Headscale automatically (CLIENT-ONLY, no routing)
 # ---------------------------------------------------------
 
 set -e
@@ -14,7 +14,6 @@ set -e
 ### USER CONFIG ###
 AUTHKEY="b71f3ae0129e9f99870392c28967035c9059da4955dc4d82"
 HEADSCALE_URL="https://hs.client.loranet.my"
-ADVERTISE_ROUTES="192.168.230.0/24"
 
 ### PATHS & VERSION ###
 TS_VER="1.56.1"
@@ -31,13 +30,13 @@ echo "=== WisGateOS2 Headscale SD-card Installer (Tailscale ${TS_VER}) ==="
 # 1) Basic checks
 # ---------------------------------------------------------
 if ! command -v opkg >/dev/null 2>&1; then
-    echo "ERROR: This does not look like OpenWrt/WisGateOS2 (opkg missing)."
-    exit 1
+  echo "ERROR: This does not look like OpenWrt/WisGateOS2 (opkg missing)."
+  exit 1
 fi
 
 if [ ! -d "${SD_MOUNT}" ]; then
-    echo "ERROR: SD card not mounted at ${SD_MOUNT}"
-    exit 1
+  echo "ERROR: SD card not mounted at ${SD_MOUNT}"
+  exit 1
 fi
 
 mkdir -p "${TS_DIR}"
@@ -63,8 +62,8 @@ tar -xzf "${TS_TGZ}"
 BIN_ROOT="${TS_DIR}/tailscale_${TS_VER}_${ARCH}"
 
 if [ ! -x "${BIN_ROOT}/tailscale" ] || [ ! -x "${BIN_ROOT}/tailscaled" ]; then
-    echo "ERROR: tailscale binaries not found in ${BIN_ROOT}"
-    exit 1
+  echo "ERROR: tailscale binaries not found in ${BIN_ROOT}"
+  exit 1
 fi
 
 echo "    Using binaries from: ${BIN_ROOT}"
@@ -74,7 +73,7 @@ echo "    Using binaries from: ${BIN_ROOT}"
 # ---------------------------------------------------------
 echo "[4] Installing symlinks to /usr/bin..."
 
-ln -sf "${BIN_ROOT}/tailscale"  /usr/bin/tailscale
+ln -sf "${BIN_ROOT}/tailscale" /usr/bin/tailscale
 ln -sf "${BIN_ROOT}/tailscaled" /usr/bin/tailscaled
 
 chmod +x /usr/bin/tailscale /usr/bin/tailscaled
@@ -91,7 +90,7 @@ mkdir -p /var/log
 
 # ---------------------------------------------------------
 # 6) Create /etc/init.d/tailscaled (procd service)
-#    + RAM-friendly env (no log upload)
+#    RAM-friendly env (no log upload)
 # ---------------------------------------------------------
 echo "[6] Creating /etc/init.d/tailscaled service..."
 
@@ -130,15 +129,15 @@ echo "[7] Generating hostname from MAC..."
 
 IFACE="br-lan"
 if [ ! -e "/sys/class/net/${IFACE}/address" ]; then
-    IFACE="eth0"
+  IFACE="eth0"
 fi
 
 if [ ! -e "/sys/class/net/${IFACE}/address" ]; then
-    HOSTNAME_TS="rak7289-unknown"
+  HOSTNAME_TS="rak7289-unknown"
 else
-    MAC=$(cat "/sys/class/net/${IFACE}/address" | tr -d ':')
-    SUFFIX=$(echo "${MAC}" | tail -c 5 | tr 'A-Z' 'a-z')
-    HOSTNAME_TS="rak7289-${SUFFIX}"
+  MAC=$(cat "/sys/class/net/${IFACE}/address" | tr -d ':')
+  SUFFIX=$(echo "${MAC}" | tail -c 5 | tr 'A-Z' 'a-z')
+  HOSTNAME_TS="rak7289-${SUFFIX}"
 fi
 
 echo "    Hostname will be: ${HOSTNAME_TS}"
@@ -155,16 +154,14 @@ echo "[8] Starting tailscaled service..."
 sleep 3
 
 # ---------------------------------------------------------
-# 9) Run 'tailscale up' to Headscale
+# 9) Run 'tailscale up' to Headscale (CLIENT ONLY)
 # ---------------------------------------------------------
-echo "[9] Running 'tailscale up' to Headscale..."
+echo "[9] Running 'tailscale up' to Headscale (client-only)..."
 
 tailscale up \
-  --login-server=https://hs.client.loranet.my \
-  --authkey=$AUTHKEY \
-  --hostname=${HOSTNAME_TS} \
-  --accept-routes=false \
-  --advertise-routes= \
+  --login-server="${HEADSCALE_URL}" \
+  --authkey="${AUTHKEY}" \
+  --hostname="${HOSTNAME_TS}" \
   --accept-dns=false
 
 # ---------------------------------------------------------
@@ -183,7 +180,7 @@ chmod +x /usr/bin/tailscale-watchdog.sh
 
 # add to cron if not already there
 if ! grep -q "tailscale-watchdog.sh" /etc/crontabs/root 2>/dev/null; then
-    echo "*/1 * * * * /usr/bin/tailscale-watchdog.sh" >> /etc/crontabs/root
+  echo "*/1 * * * * /usr/bin/tailscale-watchdog.sh" >> /etc/crontabs/root
 fi
 
 /etc/init.d/cron restart 2>/dev/null || true
