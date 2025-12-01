@@ -1,6 +1,11 @@
 #!/bin/sh
 # ---------------------------------------------------------
-# WisGateOS2 - Tailscale SD‑Card Installer + Auto‑Startup
+# WisGateOS2 (RAK7289) - Tailscale 1.56.1 SD-card installer
+# - Uses static mipsle build (tiny footprint)
+# - Stores binaries on SD card
+# - Creates /etc/init.d/tailscaled (procd)
+# - Enables auto-start on boot
+# - Runs `tailscale up` to Headscale
 # ---------------------------------------------------------
 
 set -e
@@ -9,72 +14,108 @@ set -e
 AUTHKEY="b71f3ae0129e9f99870392c28967035c9059da4955dc4d82"
 HEADSCALE_URL="https://hs.client.loranet.my"
 ADVERTISE_ROUTES="192.168.230.0/24"
-SD_PATH="/mnt/mmcblk0p1/tailscale"
-TS_VERSION="1.56.1"
+
+### PATHS & VERSION ###
+TS_VER="1.56.1"
 ARCH="mipsle"
-TS_TGZ="tailscale_${TS_VERSION}_${ARCH}.tgz"
+TS_TGZ="tailscale_${TS_VER}_${ARCH}.tgz"
+TS_URL="https://pkgs.tailscale.com/stable/${TS_TGZ}"
 
-echo "=== WisGateOS2 Headscale Auto‑Installer (SD‑Card Version) ==="
+SD_MOUNT="/mnt/mmcblk0p1"
+TS_DIR="${SD_MOUNT}/tailscale"
+
+echo "=== WisGateOS2 Headscale SD-card Installer (Tailscale ${TS_VER}) ==="
 
 # ---------------------------------------------------------
-# 1) Verify SD card
+# 1) Basic checks
 # ---------------------------------------------------------
-if [ ! -d /mnt/mmcblk0p1 ]; then
-    echo "ERROR: SD card not detected at /mnt/mmcblk0p1"
+if ! command -v opkg >/dev/null 2>&1; then
+    echo "ERROR: This does not look like OpenWrt/WisGateOS2 (opkg missing)."
     exit 1
 fi
-mkdir -p "$SD_PATH"
+
+if [ ! -d "${SD_MOUNT}" ]; then
+    echo "ERROR: SD card not mounted at ${SD_MOUNT}"
+    exit 1
+fi
+
+mkdir -p "${TS_DIR}"
+cd "${TS_DIR}"
+
+echo "[1] WisGateOS2 detected, SD card OK: ${TS_DIR}"
 
 # ---------------------------------------------------------
-# 2) Download static Tailscale
+# 2) Download Tailscale 1.56.1 tiny build
 # ---------------------------------------------------------
-echo "[1] Downloading Tailscale static binary..."
-cd "$SD_PATH"
-wget -q "https://pkgs.tailscale.com/stable/${TS_TGZ}"
+echo "[2] Downloading Tailscale static binary:"
+echo "    ${TS_URL}"
 
-echo "[2] Extracting..."
+# Always refresh (comment the next line if you want to keep old tarball)
+rm -f "${TS_TGZ}"
+
+wget -O "${TS_TGZ}" "${TS_URL}"
+
+# ---------------------------------------------------------
+# 3) Extract archive
+# ---------------------------------------------------------
+echo "[3] Extracting archive..."
 tar -xzf "${TS_TGZ}"
 
-TS_DIR="${SD_PATH}/tailscale_${TS_VERSION}_${ARCH}"
+BIN_ROOT="${TS_DIR}/tailscale_${TS_VER}_${ARCH}"
+
+if [ ! -x "${BIN_ROOT}/tailscale" ] || [ ! -x "${BIN_ROOT}/tailscaled" ]; then
+    echo "ERROR: tailscale binaries not found in ${BIN_ROOT}"
+    exit 1
+fi
+
+echo "    Using binaries from: ${BIN_ROOT}"
 
 # ---------------------------------------------------------
-# 3) Install into /usr/bin using symlinks
+# 4) Install symlinks into /usr/bin
 # ---------------------------------------------------------
-echo "[3] Installing symlinks..."
-ln -sf "${TS_DIR}/tailscale" /usr/bin/tailscale
-ln -sf "${TS_DIR}/tailscaled" /usr/bin/tailscaled
+echo "[4] Installing symlinks to /usr/bin..."
+
+ln -sf "${BIN_ROOT}/tailscale"  /usr/bin/tailscale
+ln -sf "${BIN_ROOT}/tailscaled" /usr/bin/tailscaled
+
 chmod +x /usr/bin/tailscale /usr/bin/tailscaled
 
 # ---------------------------------------------------------
-# 4) Create state + log directories
+# 5) Prepare runtime directories
 # ---------------------------------------------------------
+echo "[5] Preparing runtime directories..."
+
 mkdir -p /var/lib/tailscale
+mkdir -p /var/run/tailscale
 mkdir -p /var/log
-touch /var/log/tailscaled.log
+[ -e /var/log/tailscaled.log ] || touch /var/log/tailscaled.log
 
 # ---------------------------------------------------------
-# 5) Create init.d service
+# 6) Create /etc/init.d/tailscaled (procd service)
 # ---------------------------------------------------------
-echo "[4] Creating service /etc/init.d/tailscaled"
+echo "[6] Creating /etc/init.d/tailscaled service..."
 
 cat << 'EOF' > /etc/init.d/tailscaled
 #!/bin/sh /etc/rc.common
+
 START=99
 USE_PROCD=1
 
 start_service() {
+    mkdir -p /var/lib/tailscale
     mkdir -p /var/run/tailscale
+    [ -e /var/log/tailscaled.log ] || touch /var/log/tailscaled.log
+
     procd_open_instance
     procd_set_param command /usr/bin/tailscaled \
         --state=/var/lib/tailscale/tailscaled.state \
-        --socket=/var/run/tailscale/tailscaled.sock \
-        --verbose=1
+        --socket=/var/run/tailscale/tailscaled.sock
     procd_set_param respawn
     procd_close_instance
 }
 
 stop_service() {
-    killall tailscaled 2>/dev/null
+    killall tailscaled 2>/dev/null || true
 }
 EOF
 
@@ -82,32 +123,59 @@ chmod +x /etc/init.d/tailscaled
 /etc/init.d/tailscaled enable
 
 # ---------------------------------------------------------
-# 6) Generate hostname from MAC
+# 7) Generate hostname from MAC (DNS-safe)
 # ---------------------------------------------------------
-MAC=$(cat /sys/class/net/eth0/address | tr -d ':')
-HOST="RAK7289-$(echo $MAC | tail -c 5)"
-echo "[5] Hostname: $HOST"
+echo "[7] Generating hostname from MAC..."
+
+IFACE="br-lan"
+if [ ! -e "/sys/class/net/${IFACE}/address" ]; then
+    IFACE="eth0"
+fi
+
+if [ ! -e "/sys/class/net/${IFACE}/address" ]; then
+    HOSTNAME_TS="rak7289-unknown"
+else
+    MAC=$(cat "/sys/class/net/${IFACE}/address" | tr -d ':')
+    # last 4 hex chars as suffix
+    SUFFIX=$(echo "${MAC}" | tail -c 5 | tr 'A-Z' 'a-z')
+    HOSTNAME_TS="rak7289-${SUFFIX}"
+fi
+
+echo "    Hostname will be: ${HOSTNAME_TS}"
+
+# Best-effort set system hostname too
+uci set system.@system[0].hostname="${HOSTNAME_TS}" 2>/dev/null || true
+uci commit system 2>/dev/null || true
 
 # ---------------------------------------------------------
-# 7) Start Tailscale daemon
+# 8) Start tailscaled via init.d
 # ---------------------------------------------------------
-echo "[6] Starting tailscaled..."
-/etc/init.d/tailscaled restart
+echo "[8] Starting tailscaled service..."
+/etc/init.d/tailscaled stop >/dev/null 2>&1 || true
+/etc/init.d/tailscaled start
 sleep 3
 
 # ---------------------------------------------------------
-# 8) Login to Headscale
+# 9) Run 'tailscale up' (if AUTHKEY set)
 # ---------------------------------------------------------
-echo "[7] Running tailscale up..."
-tailscale up \
-  --login-server="${HEADSCALE_URL}" \
-  --authkey="${AUTHKEY}" \
-  --hostname="${HOST}" \
-  --accept-routes=true \
-  --advertise-routes="${ADVERTISE_ROUTES}" \
-  --accept-dns=false
+if [ "${AUTHKEY}" = "b71f3ae0129e9f99870392c28967035c9059da4955dc4d82" ]; then
+    echo "⚠ AUTHKEY is still placeholder."
+    echo "   Edit this script and set AUTHKEY to your real Headscale key,"
+    echo "   then re-run the script or run 'tailscale up' manually."
+else
+    echo "[9] Running 'tailscale up' to Headscale..."
+
+    tailscale up \
+        --login-server="${HEADSCALE_URL}" \
+        --authkey="${AUTHKEY}" \
+        --hostname="${HOSTNAME_TS}" \
+        --accept-routes=true \
+        --advertise-routes="${ADVERTISE_ROUTES}" \
+        --accept-dns=false || true
+fi
 
 echo ""
-echo "=== Installation Complete ==="
-echo "Tailscale is now running and will auto‑start on reboot."
-tailscale status
+echo "=== DONE ==="
+echo "tailscaled installed to SD-card, service enabled and started."
+echo "Hostname: ${HOSTNAME_TS}"
+echo "Check status with:  tailscale status"
