@@ -164,7 +164,6 @@ tailscale up \
     --authkey="${AUTHKEY}" \
     --hostname="${HOSTNAME_TS}" \
     --accept-routes=true \
-    --advertise-routes="${ADVERTISE_ROUTES}" \
     --accept-dns=false 
 
 # ---------------------------------------------------------
