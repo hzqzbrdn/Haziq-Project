@@ -163,7 +163,6 @@ tailscale up \
     --login-server="${HEADSCALE_URL}" \
     --authkey="${AUTHKEY}" \
     --hostname="${HOSTNAME_TS}" \
-    --accept-routes=true \
     --accept-dns=false 
 
 # ---------------------------------------------------------
