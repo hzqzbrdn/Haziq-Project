@@ -22,7 +22,7 @@ HOST_PREFIX="rak7289"
 
 TS_MOUNT="/mnt/mmcblk0p1"
 TS_DIR="$TS_MOUNT/tailscale"
-TS_TGZ_URL="https://pkgs.tailscale.com/stable/tailscale_1.56.1_mipsle.tgz"
+TS_TGZ_URL="https://pkgs.tailscale.com/stable/tailscale_1.78.1_mipsle.tgz"
 TS_TGZ="$TS_DIR/ts.tgz"
 
 # Default auth key placeholder (will be overridden by ENV if set)
