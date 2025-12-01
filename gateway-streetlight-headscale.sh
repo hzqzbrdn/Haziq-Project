@@ -158,7 +158,7 @@ sleep 3
 # ---------------------------------------------------------
 # 9) Run 'tailscale up' (if AUTHKEY set)
 # ---------------------------------------------------------
-if [ "${AUTHKEY}" = "b71f3ae0129e9f99870392c28967035c9059da4955dc4d82" ]; then
+if [ "${AUTHKEY}" = "null" ]; then
     echo "⚠ AUTHKEY is still placeholder."
     echo "   Edit this script and set AUTHKEY to your real Headscale key,"
     echo "   then re-run the script or run 'tailscale up' manually."
