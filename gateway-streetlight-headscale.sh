@@ -2,6 +2,7 @@
 # ---------------------------------------------------------
 # RAK7289 WisGateOS 2 - Headscale/Tailscale Auto Setup
 # STATIC MIPSLE VERSION (EXTRACTS TO SD-CARD)
+# TEST KEY EMBEDDED (NOT WORKING FOR REAL REGISTRATION)
 # ---------------------------------------------------------
 
 set -e
@@ -11,21 +12,14 @@ HEADSCALE_URL="https://hs.client.loranet.my"
 SUBNET="192.168.230.0/24"
 HOST_PREFIX="RAK7289"
 
-# AUTHKEY must be passed externally:
-# Example:
-# AUTHKEY=tskey-auth-xxxxx sh script.sh
+# TEST AUTHKEY ONLY (WILL NOT REGISTER)
 AUTHKEY="tskey-auth-a1cafb62710fb075a66ed85f01e79796a28910432f5f160d"
 
-if [ "$AUTHKEY" = "tskey-auth-a1cafb62710fb075a66ed85f01e79796a28910432f5f160d" ]; then
-    echo "⚠ WARNING: AUTHKEY not supplied."
-    echo "Run like:"
-    echo "AUTHKEY=tskey-auth-xxxxx sh gateway.sh"
-fi
-
-echo "=== WisGateOS2 Headscale Setup (SD‑Card Version) ==="
+echo "=== WisGateOS2 Headscale Setup (SD‑Card Version / TEST MODE) ==="
+echo "⚠ TEST MODE: This key will NOT register to Headscale."
 
 # -------------------------------
-# Detect WisGateOS (OpenWrt)
+# Detect WisGateOS/OpenWrt
 # -------------------------------
 if ! command -v uci >/dev/null 2>&1; then
     echo "ERROR: Not WisGateOS/OpenWrt."
@@ -35,10 +29,9 @@ fi
 echo "[1] WisGateOS2 detected ✔"
 
 # -------------------------------
-# Ensure SD‑card mount exists
+# Ensure SD-card mount exists
 # -------------------------------
 TS_DIR="/mnt/mmcblk0p1/tailscale"
-
 mkdir -p "$TS_DIR"
 
 if [ ! -d "$TS_DIR" ]; then
@@ -51,11 +44,10 @@ echo "[2] Using SD‑card path: $TS_DIR"
 # -------------------------------
 # Download Tailscale static binary
 # -------------------------------
-echo "[3] Downloading Tailscale static binary (mipsle)..."
+echo "[3] Downloading Tailscale (static mipsle)..."
 
 TS_URL="https://pkgs.tailscale.com/stable/tailscale_1.78.1_mipsle.tgz"
 
-# Download directly to SD-card (no /tmp)
 wget -qO "$TS_DIR/ts.tgz" "$TS_URL" || {
     echo "❌ Download failed."
     exit 1
@@ -64,14 +56,14 @@ wget -qO "$TS_DIR/ts.tgz" "$TS_URL" || {
 # -------------------------------
 # Extract on SD‑card
 # -------------------------------
-echo "[4] Extracting to SD‑card…"
+echo "[4] Extracting to SD‑card..."
 
 cd "$TS_DIR"
 tar -xzf ts.tgz
 rm -f ts.tgz
 
 # -------------------------------
-# Install binaries via symlink
+# Install binaries through symlink
 # -------------------------------
 echo "[5] Installing binaries..."
 
@@ -82,7 +74,7 @@ chmod +x "$TS_DIR/tailscale"
 chmod +x "$TS_DIR/tailscaled"
 
 # -------------------------------
-# Create tailscaled service if missing
+# Create tailscaled service
 # -------------------------------
 SERVICE_FILE="/etc/init.d/tailscaled"
 
@@ -110,15 +102,12 @@ fi
 sleep 2
 
 # -------------------------------
-# Generate EUI64 hostname from MAC
+# Generate hostname using EUI64
 # -------------------------------
 echo "[6] Generating unique hostname (EUI64)..."
 
 for IF in eth0 eth1 br-lan; do
-    if [ -e "/sys/class/net/$IF/address" ]; then
-        MAC_IF="$IF"
-        break
-    fi
+    [ -e "/sys/class/net/$IF/address" ] && MAC_IF="$IF" && break
 done
 
 MAC=$(cat /sys/class/net/$MAC_IF/address)
@@ -135,9 +124,9 @@ uci set system.@system[0].hostname="$TS_HOSTNAME"
 uci commit system
 
 # -------------------------------
-# tailscale up
+# tailscale up (test mode)
 # -------------------------------
-echo "[7] Starting Tailscale..."
+echo "[7] Running tailscale up (TEST)..."
 
 tailscale up \
   --login-server="$HEADSCALE_URL" \
@@ -148,5 +137,6 @@ tailscale up \
   --accept-dns=false || true
 
 echo ""
-echo "=== Setup Complete ==="
-echo "Node should now appear in Headscale dashboard."
+echo "=== TEST COMPLETE ==="
+echo "Binary installed, hostname set, tailscale up executed."
+echo "Replace AUTHKEY with a real key for production use."
